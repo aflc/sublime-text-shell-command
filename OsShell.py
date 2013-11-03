@@ -68,8 +68,7 @@ def _process(commands, callback=None, working_dir=None, **kwargs):
                                     cwd=working_dir,
                                     startupinfo=startupinfo)
             output, _ = proc.communicate()
-
-            results += output.decode()
+            results += output.decode(errors="replace")
 
         except subprocess.CalledProcessError as e:
 
