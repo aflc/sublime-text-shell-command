@@ -1,3 +1,4 @@
+import re
 import sublime
 
 from . import SublimeHelper as SH
@@ -15,19 +16,15 @@ class ShellCommandCommand(SH.TextCommand):
             self.default_prompt = default_prompt
         self.data_key = 'ShellCommand'
 
-    def run(self, edit, command=None, command_prefix=None, prompt=None, region=None, arg_required=None, out_to='view', title=None, syntax=None, refresh=None):
+    def run(self, edit, command=None, prompt=None, region=None, arg_required=None, out_to='view', title=None, syntax=None, refresh=None):
         ''' :param out_to: which to output the result. 'view', 'panel' or 'quickpanel'. Default is 'view'.
         '''
-
         if region is None:
             region is False
-
         if arg_required is None:
             arg_required = False
-
         if refresh is None:
             refresh = False
-
         arg = None
 
         # If regions should be used then work them out, and append
@@ -41,27 +38,64 @@ class ShellCommandCommand(SH.TextCommand):
                     sublime.message_dialog('This command requires a parameter.')
                     return
 
-        # Setup a closure to run the command:
-        #
-        def _C(command):
-
-            if command_prefix is not None:
-                command = command_prefix + ' ' + command
-
-            if arg is not None:
-                command = command + ' ' + arg
-
-            self.run_shell_command(command, out_to=out_to, title=title, syntax=syntax, refresh=refresh)
-
         # If no command is specified then we prompt for one, otherwise
         # we can just execute the command:
         #
-        if command is None:
-            if prompt is None:
-                prompt = self.default_prompt
-            self.view.window().show_input_panel(prompt, '', _C, None, None)
-        else:
-            _C(command)
+        to_asks, template = self.parse_command(command)
+
+        def _on_input_end(arglist):
+            print(to_asks, arglist, template)
+            if len(to_asks) != len(arglist):
+                return
+            argstr = template.format('', *arglist)
+            self.run_shell_command(argstr, out_to=out_to, title=title, syntax=syntax, refresh=refresh)
+        if to_asks:
+            self.ask_to_user(to_asks, _on_input_end)
+
+    def ask_to_user(self, asks, callback):
+        asks = asks[:]
+        arglist = []
+        def _on_done(arg):
+            arglist.append(arg)
+            if asks:
+                _run()
+            else:
+                callback(arglist)
+        def _on_cancel():
+            callback([])
+        def _run():
+            self.view.window().show_input_panel(asks.pop(0), '', _on_done, None, _on_cancel)
+        _run()
+
+    def parse_command(self, command):
+        ''' Inspired by Sublime's snippet syntax; "${1:prompt}" is a variable.'''
+        if not command:
+            return [self.default_prompt], '{0}'
+        parsed = re.split(r'\${(.*?)}', command)
+        # if not variables, return command itself
+        if len(parsed) == 1:
+            return [], command
+        template_parts = []
+        asks = {}
+        for idx, item in enumerate(parsed, start=1):
+            # variable
+            if idx % 2 == 0:
+                v = self.judge_special_variable(item)
+                if v:
+                    template_parts.append(v)
+                    continue
+                chs = item.split(':')
+                num = int(chs[0])
+                prompt = chs[1] if len(chs) > 1 else self.default_prompt
+                asks[num] = prompt
+                template_parts.append('{%d}' % num)
+            else:
+                template_parts.append(item)
+        return [y for x, y in sorted(asks.items(), key=lambda x: x[0])], ''.join(template_parts)
+
+    def judge_special_variable(self, item):
+        if item == 'project_folders':
+            return ' '.join(self.view.window().folders() or [])
 
     def run_shell_command(self, command=None, out_to='view', title=None, syntax=None, refresh=False):
 
@@ -139,9 +173,9 @@ class ShellCommandCommand(SH.TextCommand):
 
 class ShellCommandOnRegionCommand(ShellCommandCommand):
 
-    def run(self, edit, command=None, command_prefix=None, prompt=None, arg_required=None, panel=None, title=None, syntax=None, refresh=None):
+    def run(self, edit, command=None, prompt=None, arg_required=None, panel=None, title=None, syntax=None, refresh=None):
 
-        ShellCommandCommand.run(self, edit, command=command, command_prefix=command_prefix, prompt=prompt, region=True, arg_required=True, panel=panel, title=title, syntax=syntax, refresh=refresh)
+        ShellCommandCommand.run(self, edit, command=command, prompt=prompt, region=True, arg_required=True, panel=panel, title=title, syntax=syntax, refresh=refresh)
 
 
 # Refreshing a shell command simply involves re-running the original command:
