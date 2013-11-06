@@ -15,16 +15,15 @@ class ShellCommandCommand(SH.TextCommand):
             self.default_prompt = default_prompt
         self.data_key = 'ShellCommand'
 
-    def run(self, edit, command=None, command_prefix=None, prompt=None, region=None, arg_required=None, panel=None, title=None, syntax=None, refresh=None):
+    def run(self, edit, command=None, command_prefix=None, prompt=None, region=None, arg_required=None, out_to='view', title=None, syntax=None, refresh=None):
+        ''' :param out_to: which to output the result. 'view', 'panel' or 'quickpanel'. Default is 'view'.
+        '''
 
         if region is None:
             region is False
 
         if arg_required is None:
             arg_required = False
-
-        if panel is None:
-            panel = False
 
         if refresh is None:
             refresh = False
@@ -52,7 +51,7 @@ class ShellCommandCommand(SH.TextCommand):
             if arg is not None:
                 command = command + ' ' + arg
 
-            self.run_shell_command(command, panel=panel, title=title, syntax=syntax, refresh=refresh)
+            self.run_shell_command(command, out_to=out_to, title=title, syntax=syntax, refresh=refresh)
 
         # If no command is specified then we prompt for one, otherwise
         # we can just execute the command:
@@ -64,7 +63,7 @@ class ShellCommandCommand(SH.TextCommand):
         else:
             _C(command)
 
-    def run_shell_command(self, command=None, panel=False, title=None, syntax=None, refresh=False):
+    def run_shell_command(self, command=None, out_to='view', title=None, syntax=None, refresh=False):
 
         view = self.view
         window = view.window()
@@ -89,16 +88,18 @@ class ShellCommandCommand(SH.TextCommand):
             # If we didn't get any output then don't do anything:
             #
             if output != '':
-                # If a panel has been requested then create one and show it,
-                # otherwise create a new buffer, and set its caption:
-                #
-                if panel is True:
-                    console = window.get_output_panel('ShellCommand')
-                    window.run_command('show_panel', {'panel': 'output.ShellCommand'})
-                else:
+                # create outputs. To view, panel, or quick panel.
+                if out_to == 'view':
                     console = window.new_file()
                     caption = title if title else '*Shell Command Output*'
                     console.set_name(caption)
+                elif out_to == 'panel':
+                    console = window.get_output_panel('ShellCommand')
+                    window.run_command('show_panel', {'panel': 'output.ShellCommand'})
+                elif out_to == 'quickpanel':
+                    window.show_quick_panel(output.splitlines(), None)
+                    return
+
 
                 # Indicate that this buffer is a scratch buffer:
                 #
