@@ -1,4 +1,5 @@
 import re
+import os
 import sublime
 
 from . import SublimeHelper as SH
@@ -16,7 +17,7 @@ class ShellCommandCommand(SH.TextCommand):
             self.default_prompt = default_prompt
         self.data_key = 'ShellCommand'
 
-    def run(self, edit, command=None, prompt=None, region=None, arg_required=None, out_to='view', title=None, syntax=None, refresh=None):
+    def run(self, edit, command=None, prompt=None, region=None, arg_required=None, out_to='view', title=None, syntax=None, refresh=None, output_filter=None):
         ''' :param out_to: which to output the result. 'view', 'panel' or 'quickpanel'. Default is 'view'.
         '''
         if region is None:
@@ -48,7 +49,8 @@ class ShellCommandCommand(SH.TextCommand):
             if len(to_asks) != len(arglist):
                 return
             argstr = template.format('', *arglist)
-            self.run_shell_command(argstr, out_to=out_to, title=title, syntax=syntax, refresh=refresh)
+            self.run_shell_command(argstr, out_to=out_to, title=title, syntax=syntax,
+                                   refresh=refresh, output_filter=output_filter)
         if to_asks:
             self.ask_to_user(to_asks, _on_input_end)
 
@@ -97,7 +99,7 @@ class ShellCommandCommand(SH.TextCommand):
         if item == 'project_folders':
             return ' '.join(self.view.window().folders() or [])
 
-    def run_shell_command(self, command=None, out_to='view', title=None, syntax=None, refresh=False):
+    def run_shell_command(self, command=None, out_to='view', title=None, syntax=None, refresh=False, output_filter=None):
 
         view = self.view
         window = view.window()
@@ -131,9 +133,8 @@ class ShellCommandCommand(SH.TextCommand):
                     console = window.get_output_panel('ShellCommand')
                     window.run_command('show_panel', {'panel': 'output.ShellCommand'})
                 elif out_to == 'quickpanel':
-                    window.show_quick_panel(output.splitlines(), None)
+                    self.out_to_quick_panel(output, output_filter)
                     return
-
 
                 # Indicate that this buffer is a scratch buffer:
                 #
@@ -169,6 +170,29 @@ class ShellCommandCommand(SH.TextCommand):
                 view.run_command('shell_command_refresh')
 
         OsShell.process(command, _C, working_dir=working_dir)
+
+    def out_to_quick_panel(self, output, output_filter):
+        view = self.view
+        window = view.window()
+        items = []
+
+        def _on_done(index):
+            if index == -1:
+                window.focus_view(view)
+                return
+            path = items[index]
+            if not os.path.exists(path):
+                window.focus_view(view)
+                return
+            open_view = window.open_file(path)
+            if open_view:
+                window.focus_view(open_view)
+
+        if isinstance(output_filter, (list, tuple)) and len(output_filter) == 2:
+            pattern, mapping = output_filter
+            for mo in re.finditer(pattern, output):
+                items.append(mo.expand(mapping))
+            self.view.window().show_quick_panel(items, _on_done, 0, 0, None)
 
 
 class ShellCommandOnRegionCommand(ShellCommandCommand):
